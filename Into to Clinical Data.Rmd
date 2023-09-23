@@ -44,7 +44,7 @@ Hint: The code you use here is the same as the code when you initially queried, 
 ```{r}
 clin_query <- GDCquery(project = "TCGA-BRCA", data.category = "Clinical", data.type = "Clinical Supplement", data.format = 'BCR Biotab') 
                        
-clinic <- 
+clinic <- clinical.BCRtab.all$clinical_patient_brca[-c(1,2),]
 
 colnames(clinic)[ colnames(clinic) == "bcr_patient_barcode" ] <- "Tumor_Sample_Barcode"
 ```
@@ -201,7 +201,9 @@ cleaned_clinic$age_category <- ifelse(cleaned_clinic$age_at_diagnosis <= 35, "Yo
 KM Plots also requires a column for total number of days survived post diagnosis. However, TCGA records survival over time two ways: last_contact_days_to for patients who are still alive, and death_days_to for patients who passed away. If a patient is still alive, their value in the death_days_to column is the string "[Not Applicable]". Therefore, we need to create a new column called survival_time that combines the information in these two columns so there are no NA values.
 
 ```{r}
-cleaned_clinic$survival_time <- 
+cleaned_clinic$survival_time <- ifelse(cleaned_clinic$death_days_to == "[Not Applicable]",
+                                       cleaned_clinic$last_contact_days_to,
+                                       cleaned_clinic$death_days_to)
 ```
 
 If we check the data, we see that the values in survival_time are strings from the "" around each number. We need to convert the values to numeric in order to use them in the KM plot.
@@ -212,7 +214,7 @@ cleaned_clinic$survival_time <- as.numeric(cleaned_clinic$survival_time)
 
 Finally, we need to make a death event column that contains T if a patient has died, and F if the patient is alive. (Hint: cleaned_clinic$vital_status has "Alive" if a patient is alive and "Dead" if a patient passed.)
 ```{r}
-cleaned_clinic$death_event <- ifelse(cleaned_clinic$vital_status == "Dead", "T", "F")
+cleaned_clinic$death_event <- cleaned_clinic$vital_status == "Dead"
 ```
 
 
@@ -250,13 +252,13 @@ Answer the following questions:
 
 # 2. What does the x axis represent? Time
 
-# 3. What age group appears to have the greatest rate of survival?
+# 3. What age group appears to have the greatest rate of survival? Middle
 
-# 4. What age group appears to have the worst rate of survival? 
+# 4. What age group appears to have the worst rate of survival? Old, though the rate of survival for "young" is worse after about 3000 days.
 
-# 5. What is the approx. 15-year survival rate for "Old" breast cancer patients?
+# 5. What is the approx. 15-year survival rate for "Old" breast cancer patients? Approximately 0.3
 
-# 6. What is the p-value? Is it statistically significant and what does that tell us about the relationship between age and breast cancer survival? 
+# 6. What is the p-value? Is it statistically significant and what does that tell us about the relationship between age and breast cancer survival? The p-value is 0.2, which is less than the significance value of 0.05. It is therefore not statistically significant and indicates that there is no sufficient evidence to prove that there is a relationship between age and survival probability.
 
 
 
