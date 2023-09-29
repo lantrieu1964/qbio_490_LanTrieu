@@ -1,0 +1,137 @@
+---
+title: "Intro to MAF"
+author: Nicole Black, Wade Boohar
+date: 07/17/22
+updated: 09/17/23
+---
+
+***Deliverables***
+-Upload this R Notebook to your GitHub and submit the link to your Repo on BB.
+-Include any graphs or figures created in this assignment in the folder with your R notebook with descriptive file names.
+
+Since this is an optional partner activity, it is okay if your answers are the same as your partner’s as long as everyone understands it and could explain it in their own words if asked. Each person must individually push their code to Github. *At the top of your R Notebook, write the name of you and your partner(s) as a comment.*
+
+***Complete the following coding activity and answer any following questions as comments in your R Notebook***
+
+In MAF_Tutorial.Rmd, you looked at how to analyze mutation data in terms of clinical variables as well as mutation status. In this assignment, you will need to combine the two skills to demonstrate your understanding of categorical variables and R data structures.
+
+*Pre-Assignment*
+Load all necessary packages, read in the clinical data .csv file you have in your analysis_data folder, and instantiate the MAF_object.
+```{r}
+    knitr::opts_knit$set(root.dir = normalizePath("/Users/lantrieu1964/Documents/GitHub/qbio_490_LanTrieu/analysis_data")) 
+
+library(maftools)
+library(TCGAbiolinks)
+library(ggplot2)
+
+clinical <- read.csv("/Users/lantrieu1964/Documents/GitHub/qbio_490_LanTrieu/analysis_data/brca_clinical_data.csv")
+
+colnames(clinical)[ colnames(clinical) == "bcr_patient_barcode" ] <- "Tumor_Sample_Barcode"
+
+write.csv(clinical, "/Users/lantrieu1964/Documents/GitHub/qbio_490_LanTrieu/analysis_data/brca_clinical_data.csv", row.names = FALSE)
+
+maf_query <- GDCquery(
+    project = "TCGA-BRCA", 
+    data.category = "Simple Nucleotide Variation", 
+    access = "open", # we only have access to somatic mutations which are open access
+    data.type = "Masked Somatic Mutation", 
+    workflow.type = "Aliquot Ensemble Somatic Variant Merging and Masking")
+
+maf <- GDCprepare(maf_query) # as long as it runs, ignore any errors
+
+maf_object <- read.maf(maf = maf, 
+                       clinicalData = clinical,
+                       isTCGA = TRUE)
+```
+
+
+*1*
+Choose a clinical variable (or any variable from clin_rad or clin_drug) to separate your populations into two different groups and rewrite the column or create a new column with that variable as a factor. ***Do not use age or vital_status as your clinical variable.*** Hint: if your variable is continuous, you will need to determine your own cutoffs for the different levels of the factor. If your variable is categorical and has more than two possible values, choose the two that are the most common.
+```{r}
+maf_object@clinical.data$lymph_nodes_sufficient_count <- ifelse(
+  maf_object@clinical.data$lymph_nodes_examined_count >= 20,
+  "sufficient (>= 20)",
+  "insufficient (<20)"
+)
+
+lymph_nodes_sufficient_examined_count <- maf_object@clinical.data$lymph_nodes_examined_count >= 20
+lymph_nodes_sufficient_exam_count <- maf_object@clinical.data$lymph_nodes_examined_count < 20
+```
+
+
+*2*
+Create a co-oncoplot with the top 10-20 (you choose) most mutated genes for the two groups. Pick one that has a large discrepancy in % mutated or type of mutations between the groups and research it. What is the gene used for? Can you think of any reason for the discrepancy? 
+
+PIK3CA has the most mutations. I can also see that missense mutations are the most common. The PIK3CA gene provides instructions to make the P110a protein, which is a subunit of an enzyme known as phosphatidylinositol 3-kinase. It plays a significant role in regulating cell growth and survival, as a loss-of-function mutation may lead to cell proliferation and increased angiogenesis. The large discreptancy could be attributed to a small sample size or infrequent checks.
+```{r}
+suff_data <- maf_object@clinical.data[lymph_nodes_sufficient_examined_count, ]$Tumor_Sample_Barcode
+suff <- subsetMaf(maf = maf_object,
+                  tsb = suff_data)
+insuff_data <- maf_object@clinical.data[lymph_nodes_sufficient_exam_count, ]$Tumor_Sample_Barcode
+insuff <- subsetMaf(maf = maf_object,
+                    tsb = insuff_data)
+
+coOncoplot(
+  m1 = suff,
+  m2 = insuff,
+  m1Name = "20+ Lymph Node Exams",
+  m2Name = "<20 Lymph Node Exams",)
+```
+
+
+*3*
+Create a contingency table with your variable and chosen gene. Run a Fisher’s Exact Test between presence of mutations for that gene and your clinical variable. Create and save a mosaic plot. 
+Interpret the output of the Fisher’s Exact Test in terms of the odds ratio and p-value.
+
+the p-value is 0.1104, which is greater than the significance level of 0.05. This indicates that the data is not sufficient enough to reject the null hypothesis— that there is no relationship between the amount of lymph node exams and the detection of PIK3CA mutations. The odds ratio is 1.257327 and indicates that people with less than twenty lymph node exams are approximately 1.257327 times as likely than those with twenty or more lymph nodes exams to have PIK3CA mutations.
+```{r}
+maf_object@clinical.data$lymph_nodes_sufficient_count <- factor(maf_object@clinical.data$lymph_nodes_sufficient_count)
+PIK3CA_mask <- ifelse(maf_object@data$Hugo_Symbol == "PIK3CA", T, F)
+test <- maf_object@data[PIK3CA_mask, ]$Tumor_Sample_Barcode
+test1 <- levels(factor(test))
+mutations <- match(maf_object@clinical.data$Tumor_Sample_Barcode, test1)
+mutations 
+maf_object@clinical.data$PIK3CA_mutated <- ifelse(!is.na(mutations), "Mutated", "Not Mutated")
+contig <- table(maf_object@clinical.data$lymph_nodes_sufficient_count, maf_object@clinical.data$PIK3CA_mutated)
+
+mosaicplot(contig)
+
+fisher_test <- fisher.test(contig)
+fisher_test
+```
+
+
+*4*
+Subset your maf_object based on your chosen clinical variable and create a co-lollipop plot of your chosen gene divided between the two different clinical variable possibilities. Include descriptive names on your plot.
+Do you notice any difference in terms of mutations (e.g. sites, types, number) between the two populations?
+
+The lollipop plot is mostly symmetrical, as the top and bottom halves are nearly identical. The population containing 20+ lymph node exams and the population containing 20 or less lymph node exams both have a drastically great number of missense mutations at similar locations. In frame deletion mutations also occur in the same area. 
+```{r}
+lollipopPlot2(m1 = suff, 
+              m2 = insuff, 
+              m1_name = "20+ Lymph Node Exams",
+              m2_name = "<20 Lymph Node Exams",
+              gene = "PIK3CA")
+```
+
+
+*5*
+Create your Overall_Survival_Status column and create a mafSurvival KM plot based on mutations in your chosen gene.
+Does there seem to be a difference? Hypothesize why or not based on the other analysis you did with the gene above.
+
+The two lines do not diverge much from one another, which further corroborates the previous conclusion drawn from the cooncoplot and p-value data that there is not sufficient evidence to declare a relationship between lymph node examinations and the amount of gene mutations. 
+```{r}
+maf_object@clinical.data <- maf_object@clinical.data[!is.na(maf_object@clinical.data$age_at_diagnosis), ]
+maf_object@clinical.data$survival_time <- with(maf_object@clinical.data, ifelse(
+  last_contact_days_to != "[Not Available]",
+  as.numeric(last_contact_days_to),
+  as.numeric(death_days_to)
+))
+maf_object@clinical.data$death_event <- maf_object@clinical.data$vital_status != "Alive"
+
+mafSurvival(maf = maf_object,
+            genes = "PIK3CA",
+            time = "survival_time",
+            Status = "death_event", 
+            isTCGA = TRUE)
+```
