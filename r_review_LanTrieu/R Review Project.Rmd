@@ -54,7 +54,7 @@ clin_query <- GDCquery(project = "TCGA-SKCM",
                        data.type = "Clinical Supplement", 
                        data.format = 'BCR Biotab') 
 
-#GDCdownload(clin_query)
+GDCdownload(clin_query)
 clinical.BCRtab.all <- GDCprepare(clin_query) 
 clinic <- clinical.BCRtab.all$clinical_patient_skcm[-c(1,2),]
 clinical <- read.csv("/Users/lantrieu1964/Documents/GitHub/qbio_490_LanTrieu/analysis_data/skcm_clinical_data.csv")
@@ -89,7 +89,7 @@ maf_query <- GDCquery(
     data.type = "Masked Somatic Mutation", 
     workflow.type = "Aliquot Ensemble Somatic Variant Merging and Masking")
 
-#GDCdownload(maf_query)
+GDCdownload(maf_query)
 maf <- GDCprepare(maf_query) 
 maf_object <- read.maf(
               maf = maf,
@@ -100,33 +100,28 @@ maf_object <- read.maf(
 1. Differences in survival b/n metastatic & non-metastatic patients.
 ```{r}
 #Create Mask & Remove NAs
-unique(rna_se@colData@listData$definition)
 na_mask <- !is.na(rna_se@colData@listData$definition)
 cleaned_clinical <- rna_se@colData[na_mask, ]
-cleaned_clinical$metastasis_status <- ifelse(cleaned_clinical$definition == "Metastatic", "Yes", 
-                                      ifelse(cleaned_clinical$definition == "Primary Solid Tumor", "No", NA))
-cleaned_clinical <- cleaned_clinical[!is.na(cleaned_clinical$metastasis_status), ]
+cleaned_clinical$metastasis_status <- ifelse(cleaned_clinical$definition == "Metastatic", "TRUE",
+                                      ifelse(cleaned_clinical$definition == "Primary solid Tumor", "FALSE", NA))
+
+#Create KM Plot variables using the categories
 cleaned_clinical$survival_time <- ifelse(!is.na(cleaned_clinical$days_to_last_follow_up), cleaned_clinical$days_to_last_follow_up, cleaned_clinical$days_to_death)
 cleaned_clinical$survival_time <- as.numeric(cleaned_clinical$survival_time)
-cleaned_clinical <- cleaned_clinical[!is.na(cleaned_clinical$survival_time),]
-cleaned_clinical$death_event <- ifelse(cleaned_clinical$vital_status == "Dead", T, F)
+cleaned_clinical$death_event <- ifelse(cleaned_clinical$vital_status == "Dead", TRUE, FALSE)
 
-#Create Survminer Objects
-cleaned_clinical$survival_time <- as.numeric(cleaned_clinical$survival_time)
-survival_object <- Surv(time = cleaned_clinical$survival_time, 
-                        event = cleaned_clinical$death_event)
-fit_object <- survfit(survival_object ~ metastasis_status, 
-                      data = cleaned_clinical)
+#Prepare KM Plot
+survival_object <- Surv(time = cleaned_clinical$survival_time, event = cleaned_clinical$death_event)
+fit_object <- survfit(survival_object ~ cleaned_clinical$metastasis_status, data = cleaned_clinical)
 
-#Create Kaplan-Meier Plot
-survplot <- ggsurvplot(fit_object, pval = TRUE)
-KM_plot <- survplot$plot + theme_bw() + theme(axis.title = element_text(size=20), 
-                                              axis.text = element_text(size=16),
-                                              legend.title = element_text(size=14),
-                                              legend.text = element_text(size=12))
+survplot <- ggsurvplot(fit_object,
+                       pval = TRUE)
+KM_plot <- survplot$plot + theme_bw() + theme(axis.title = element_text(size = 20), 
+                                              axis.text = element_text(size = 16),
+                                              legend.title = element_text(size = 14),
+                                              legend.text = element_text(size = 12))
 KM_plot
 ```
-
 2. Mutation differences b/n metastatic & non-metastatic patients for multiple genes.
 ```{r}
 #Create the Metastasis Status Variable
@@ -174,9 +169,6 @@ somaticInteractions(maf = metastatic_maf,
 somaticInteractions(maf = nonmetastatic_maf,
                     genes = NULL,
                     pvalue = c(0.05, 0.1)) 
-```
-```{r}
-
 ```
 
 
